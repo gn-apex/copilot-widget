@@ -1,8 +1,16 @@
 // The ONE contract shared by: widget runtime, playground designer, backend storage, customer dashboard.
+import { SOUND_IDS, type SoundName } from "./sounds";
+import type { AcceptMode } from "./files";
+
+export type { SoundName };
+
 export interface WidgetSchema {
   version: 1;
   theme: {
-    mode: "light" | "dark" | "system";
+    /** auto = follow the host website's own light/dark theme (next-themes, class, data-theme, colour-scheme…) */
+    mode: "light" | "dark" | "system" | "auto";
+    /** Use separate colours for light and dark (see the *Dark fields below). Off = one palette for both. */
+    splitColors: boolean;
     primaryColor: string;
     accentColor: string;
     radius: number;
@@ -74,6 +82,15 @@ export interface WidgetSchema {
     headerText: string;
     composerBg: string;
     inputBg: string;
+    /** Dark-mode palette. Only used when theme.splitColors is on; empty = automatic dark default. */
+    bgDark: string;
+    bg2Dark: string;
+    textColorDark: string;
+    borderColorDark: string;
+    headerBgDark: string;
+    headerTextDark: string;
+    composerBgDark: string;
+    inputBgDark: string;
   };
   persona: {
     name: string;
@@ -81,13 +98,43 @@ export interface WidgetSchema {
     avatarUrl: string;
     greeting: string;
     typingIndicator: boolean;
+    /** Little green "online" dot on the avatar */
+    showStatus: boolean;
   };
   behavior: {
     placeholder: string;
     suggestedQuestions: string[];
     autoOpenAfterSeconds: number;
+    /** Auto-open at most once per browser session (sessionStorage) */
+    autoOpenOncePerSession: boolean;
+    autoOpenOnMobile: boolean;
     soundOnReply: boolean;
+    sound: SoundName;
+    /** 0..100 */
+    soundVolume: number;
+    soundOnSend: boolean;
     persistChat: boolean;
+    /** auto = show only while "remember conversation" is on */
+    clearButton: "auto" | "always" | "never";
+  };
+  composer: {
+    /** Let visitors attach images / files (sent to the model as multimodal parts) */
+    uploads: boolean;
+    accept: AcceptMode;
+    maxFiles: number;
+    maxSizeMB: number;
+    dragDrop: boolean;
+    attachIcon: "paperclip" | "plus" | "image";
+    attachPlacement: "inside" | "outside";
+    style: "auto" | "pill" | "rounded" | "square" | "line";
+    sendIcon: "arrow" | "plane" | "chevron";
+    sendStyle: "solid" | "soft" | "ghost";
+    sendOnEnter: boolean;
+    /** 0 = unlimited */
+    maxChars: number;
+    maxRows: number;
+    showHint: boolean;
+    autofocus: boolean;
   };
   messages: {
     bubbleStyle: "rounded" | "soft" | "sharp" | "bubble";
@@ -97,10 +144,51 @@ export interface WidgetSchema {
     userText: string;
     aiBg: string;
     aiText: string;
+    userBgDark: string;
+    userTextDark: string;
+    aiBgDark: string;
+    aiTextDark: string;
     aiBorder: boolean;
     fontSize: number;
-    maxWidth: number;
+    lineHeight: number;
+    /** Visitor bubble max width, % of the chat column */
+    userMaxWidth: number;
+    /** Assistant bubble max width, % of the chat column */
+    aiMaxWidth: number;
+    /** bubble = filled bubble, plain = no bubble (text flows on the window, Gemini-style) */
+    aiStyle: "bubble" | "plain";
+    gap: number;
+    padding: number;
     showAvatar: boolean;
+    showSender: boolean;
+    animate: "none" | "fade" | "rise" | "pop";
+    codeTheme: "dark" | "light" | "auto";
+    showActions: "hover" | "always" | "off";
+    showReasoning: boolean;
+    showTools: boolean;
+  };
+  toasts: {
+    enabled: boolean;
+    messages: string[];
+    /** Seconds after page load before the first toast */
+    delay: number;
+    /** 0 = show once. Otherwise seconds between toasts */
+    repeatEvery: number;
+    maxShows: number;
+    /** Seconds on screen. 0 = until dismissed */
+    duration: number;
+    style: "card" | "bubble" | "pill";
+    showAvatar: boolean;
+    showName: boolean;
+    /** Quick-reply buttons (max 3). Tapping one opens the chat and sends it. */
+    replies: string[];
+    sound: boolean;
+    soundName: SoundName;
+    dismissible: boolean;
+    pauseOnHover: boolean;
+    /** Once dismissed, stay quiet for the rest of the session */
+    respectDismiss: boolean;
+    mobile: boolean;
   };
   customCss: string;
 }
@@ -115,7 +203,8 @@ export type PartialSchema = {
 export const DEFAULTS: WidgetSchema = {
   version: 1,
   theme: {
-    mode: "dark",
+    mode: "auto",
+    splitColors: false,
     primaryColor: "#06b6d4",
     accentColor: "#22d3ee",
     radius: 18,
@@ -176,6 +265,14 @@ export const DEFAULTS: WidgetSchema = {
     headerText: "",
     composerBg: "",
     inputBg: "",
+    bgDark: "",
+    bg2Dark: "",
+    textColorDark: "",
+    borderColorDark: "",
+    headerBgDark: "",
+    headerTextDark: "",
+    composerBgDark: "",
+    inputBgDark: "",
   },
   persona: {
     name: "AI Assistant",
@@ -183,13 +280,37 @@ export const DEFAULTS: WidgetSchema = {
     avatarUrl: "",
     greeting: "Hi! How can I help you today?",
     typingIndicator: true,
+    showStatus: true,
   },
   behavior: {
     placeholder: "Ask anything…",
     suggestedQuestions: [],
     autoOpenAfterSeconds: 0,
+    autoOpenOncePerSession: true,
+    autoOpenOnMobile: false,
     soundOnReply: false,
+    sound: "chime",
+    soundVolume: 50,
+    soundOnSend: false,
     persistChat: false,
+    clearButton: "auto",
+  },
+  composer: {
+    uploads: true,
+    accept: "images-docs",
+    maxFiles: 4,
+    maxSizeMB: 8,
+    dragDrop: true,
+    attachIcon: "paperclip",
+    attachPlacement: "inside",
+    style: "auto",
+    sendIcon: "arrow",
+    sendStyle: "solid",
+    sendOnEnter: true,
+    maxChars: 2000,
+    maxRows: 5,
+    showHint: false,
+    autofocus: true,
   },
   messages: {
     bubbleStyle: "soft",
@@ -199,10 +320,43 @@ export const DEFAULTS: WidgetSchema = {
     userText: "",
     aiBg: "",
     aiText: "",
+    userBgDark: "",
+    userTextDark: "",
+    aiBgDark: "",
+    aiTextDark: "",
     aiBorder: false,
     fontSize: 13.5,
-    maxWidth: 85,
+    lineHeight: 1.55,
+    userMaxWidth: 80,
+    aiMaxWidth: 100,
+    aiStyle: "bubble",
+    gap: 12,
+    padding: 10,
     showAvatar: false,
+    showSender: false,
+    animate: "rise",
+    codeTheme: "dark",
+    showActions: "hover",
+    showReasoning: true,
+    showTools: true,
+  },
+  toasts: {
+    enabled: false,
+    messages: ["Need help? I’m right here if you have any questions."],
+    delay: 12,
+    repeatEvery: 0,
+    maxShows: 3,
+    duration: 10,
+    style: "card",
+    showAvatar: true,
+    showName: true,
+    replies: [],
+    sound: false,
+    soundName: "bell",
+    dismissible: true,
+    pauseOnHover: true,
+    respectDismiss: true,
+    mobile: true,
   },
   customCss: "",
 };
@@ -226,6 +380,13 @@ const url = (v: unknown) =>
     ? v.trim().slice(0, 500)
     : "";
 const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+const list = (v: unknown, max: number, len = 200) =>
+  Array.isArray(v)
+    ? v
+        .filter((q: unknown) => typeof q === "string" && q.trim())
+        .map((q: string) => q.trim().slice(0, len))
+        .slice(0, max)
+    : null;
 
 /** Defaults + validation + legacy mapping. Never throws; bad values fall back to defaults. */
 export function resolve(input: any = {}): WidgetSchema {
@@ -237,11 +398,14 @@ export function resolve(input: any = {}): WidgetSchema {
   const b = input.behavior ?? {};
   const pr = input.presentation ?? {};
   const m = input.messages ?? {};
+  const cp = input.composer ?? {};
+  const to = input.toasts ?? {};
 
   return {
     version: 1,
     theme: {
-      mode: pick(t.mode, ["light", "dark", "system"] as const, d.theme.mode),
+      mode: pick(t.mode, ["light", "dark", "system", "auto"] as const, d.theme.mode),
+      splitColors: bool(t.splitColors, d.theme.splitColors),
       primaryColor: hex(t.primaryColor, d.theme.primaryColor),
       accentColor: hex(t.accentColor ?? t.primaryColor, d.theme.accentColor),
       radius: num(t.radius ?? t.borderRadius, d.theme.radius, 0, 40),
@@ -379,6 +543,14 @@ export function resolve(input: any = {}): WidgetSchema {
       headerText: hexOpt(p.headerText),
       composerBg: hexOpt(p.composerBg),
       inputBg: hexOpt(p.inputBg),
+      bgDark: hexOpt(p.bgDark),
+      bg2Dark: hexOpt(p.bg2Dark),
+      textColorDark: hexOpt(p.textColorDark),
+      borderColorDark: hexOpt(p.borderColorDark),
+      headerBgDark: hexOpt(p.headerBgDark),
+      headerTextDark: hexOpt(p.headerTextDark),
+      composerBgDark: hexOpt(p.composerBgDark),
+      inputBgDark: hexOpt(p.inputBgDark),
     },
     persona: {
       name: str(pe.name, d.persona.name, 80),
@@ -386,6 +558,7 @@ export function resolve(input: any = {}): WidgetSchema {
       avatarUrl: typeof pe.avatarUrl === "string" ? pe.avatarUrl : "",
       greeting: str(pe.greeting, d.persona.greeting, 500),
       typingIndicator: pe.typingIndicator !== false,
+      showStatus: bool(pe.showStatus, d.persona.showStatus),
     },
     behavior: {
       placeholder: str(b.placeholder, d.behavior.placeholder, 120),
@@ -395,8 +568,31 @@ export function resolve(input: any = {}): WidgetSchema {
             .slice(0, 8)
         : [],
       autoOpenAfterSeconds: num(b.autoOpenAfterSeconds, 0, 0, 120),
+      autoOpenOncePerSession: bool(b.autoOpenOncePerSession, d.behavior.autoOpenOncePerSession),
+      autoOpenOnMobile: bool(b.autoOpenOnMobile, d.behavior.autoOpenOnMobile),
       soundOnReply: bool(b.soundOnReply, d.behavior.soundOnReply),
+      sound: pick(b.sound, SOUND_IDS, d.behavior.sound),
+      soundVolume: num(b.soundVolume, d.behavior.soundVolume, 0, 100),
+      soundOnSend: bool(b.soundOnSend, d.behavior.soundOnSend),
       persistChat: bool(b.persistChat, d.behavior.persistChat),
+      clearButton: pick(b.clearButton, ["auto", "always", "never"] as const, d.behavior.clearButton),
+    },
+    composer: {
+      uploads: bool(cp.uploads, d.composer.uploads),
+      accept: pick(cp.accept, ["images", "images-docs", "any"] as const, d.composer.accept),
+      maxFiles: Math.round(num(cp.maxFiles, d.composer.maxFiles, 1, 10)),
+      maxSizeMB: num(cp.maxSizeMB, d.composer.maxSizeMB, 1, 20),
+      dragDrop: bool(cp.dragDrop, d.composer.dragDrop),
+      attachIcon: pick(cp.attachIcon, ["paperclip", "plus", "image"] as const, d.composer.attachIcon),
+      attachPlacement: pick(cp.attachPlacement, ["inside", "outside"] as const, d.composer.attachPlacement),
+      style: pick(cp.style, ["auto", "pill", "rounded", "square", "line"] as const, d.composer.style),
+      sendIcon: pick(cp.sendIcon, ["arrow", "plane", "chevron"] as const, d.composer.sendIcon),
+      sendStyle: pick(cp.sendStyle, ["solid", "soft", "ghost"] as const, d.composer.sendStyle),
+      sendOnEnter: bool(cp.sendOnEnter, d.composer.sendOnEnter),
+      maxChars: Math.round(num(cp.maxChars, d.composer.maxChars, 0, 8000)),
+      maxRows: Math.round(num(cp.maxRows, d.composer.maxRows, 2, 10)),
+      showHint: bool(cp.showHint, d.composer.showHint),
+      autofocus: bool(cp.autofocus, d.composer.autofocus),
     },
     messages: {
       bubbleStyle: pick(
@@ -414,10 +610,44 @@ export function resolve(input: any = {}): WidgetSchema {
       userText: hexOpt(m.userText),
       aiBg: hexOpt(m.aiBg),
       aiText: hexOpt(m.aiText),
+      userBgDark: hexOpt(m.userBgDark),
+      userTextDark: hexOpt(m.userTextDark),
+      aiBgDark: hexOpt(m.aiBgDark),
+      aiTextDark: hexOpt(m.aiTextDark),
       aiBorder: bool(m.aiBorder, d.messages.aiBorder),
       fontSize: num(m.fontSize, d.messages.fontSize, 11, 18),
-      maxWidth: num(m.maxWidth, d.messages.maxWidth, 55, 100),
+      lineHeight: num(m.lineHeight, d.messages.lineHeight, 1.25, 2),
+      // legacy: a single `maxWidth` used to apply to both sides
+      userMaxWidth: num(m.userMaxWidth ?? m.maxWidth, d.messages.userMaxWidth, 40, 100),
+      aiMaxWidth: num(m.aiMaxWidth ?? m.maxWidth, d.messages.aiMaxWidth, 40, 100),
+      aiStyle: pick(m.aiStyle, ["bubble", "plain"] as const, d.messages.aiStyle),
+      gap: num(m.gap, d.messages.gap, 2, 36),
+      padding: num(m.padding, d.messages.padding, 4, 24),
       showAvatar: bool(m.showAvatar, d.messages.showAvatar),
+      showSender: bool(m.showSender, d.messages.showSender),
+      animate: pick(m.animate, ["none", "fade", "rise", "pop"] as const, d.messages.animate),
+      codeTheme: pick(m.codeTheme, ["dark", "light", "auto"] as const, d.messages.codeTheme),
+      showActions: pick(m.showActions, ["hover", "always", "off"] as const, d.messages.showActions),
+      showReasoning: bool(m.showReasoning, d.messages.showReasoning),
+      showTools: bool(m.showTools, d.messages.showTools),
+    },
+    toasts: {
+      enabled: bool(to.enabled, d.toasts.enabled),
+      messages: list(to.messages, 8, 240) ?? d.toasts.messages,
+      delay: num(to.delay, d.toasts.delay, 1, 600),
+      repeatEvery: to.repeatEvery === 0 ? 0 : Math.round(num(to.repeatEvery, d.toasts.repeatEvery, 0, 3600)),
+      maxShows: Math.round(num(to.maxShows, d.toasts.maxShows, 1, 10)),
+      duration: Math.round(num(to.duration, d.toasts.duration, 0, 120)),
+      style: pick(to.style, ["card", "bubble", "pill"] as const, d.toasts.style),
+      showAvatar: bool(to.showAvatar, d.toasts.showAvatar),
+      showName: bool(to.showName, d.toasts.showName),
+      replies: list(to.replies, 3, 60) ?? [],
+      sound: bool(to.sound, d.toasts.sound),
+      soundName: pick(to.soundName, SOUND_IDS, d.toasts.soundName),
+      dismissible: bool(to.dismissible, d.toasts.dismissible),
+      pauseOnHover: bool(to.pauseOnHover, d.toasts.pauseOnHover),
+      respectDismiss: bool(to.respectDismiss, d.toasts.respectDismiss),
+      mobile: bool(to.mobile, d.toasts.mobile),
     },
     customCss:
       typeof input.customCss === "string"
@@ -440,5 +670,7 @@ export function fromServer(raw: any = {}): WidgetSchema {
     panel: m("panel"),
     presentation: m("presentation"),
     messages: m("messages"),
+    composer: m("composer"),
+    toasts: m("toasts"),
   });
 }

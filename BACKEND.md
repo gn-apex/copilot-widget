@@ -53,3 +53,38 @@ Render `playground/fields.ts` as the form (same list), preview with `<gnapex-cop
 The Studio currently publishes the FULL schema, so a client's design is frozen at publish time.
 If you want untouched settings to follow future default changes, publish only the diff
 (`diff(schema, DEFAULTS)`) instead of `schema`; `resolve()` already merges it over `DEFAULTS`.
+
+
+## 6. Attachments (multimodal) — v3
+
+When `composer.uploads` is on, the widget posts attachments with each message:
+
+```jsonc
+// POST /copilot/:projectId/stream
+{
+  "messages": [
+    { "role": "user",
+      "content": "What is in this picture?",
+      "attachments": [ { "name": "photo.jpg", "mime": "image/jpeg", "data": "<base64, no data: prefix>" } ] }
+  ],
+  "pageContext": { ... }
+}
+```
+
+Only the **current** session's messages carry `data`; messages restored from `localStorage` keep just a thumbnail locally and are sent as text. Images are already downscaled (≤1600px, JPEG) in the browser; text/PDF files are sent as-is up to `composer.maxSizeMB`.
+
+Map them to model parts (Gemini shown; Gemma 3 accepts images the same way):
+
+```ts
+const parts = [
+  { text: m.content },
+  ...(m.attachments ?? []).map((a) =>
+    a.mime.startsWith("text/") || a.mime === "application/json"
+      ? { text: `File “${a.name}”:\n` + Buffer.from(a.data, "base64").toString("utf8") }   // works on any model
+      : { inlineData: { mimeType: a.mime, data: a.data } }),                                  // images; PDFs on Gemini only
+];
+```
+
+**Do not trust the client.** Re-check `mime` against an allow-list, cap total decoded bytes per request, cap files per message, and raise your JSON body limit (e.g. `express.json({ limit: "25mb" })` — base64 is ~33% larger than the file). Everything else (`mode`, `phase`, `thought`, `token`, `tool_*`, `suggested_actions`, `action_confirmation_required`, `[DONE]`) is unchanged.
+
+The new `ui` keys (`composer`, `toasts`, `messages.userMaxWidth/aiMaxWidth`, `*Dark` colours, `behavior.sound*`, …) are all optional — `resolve()` fills defaults, so existing saved configs keep working.

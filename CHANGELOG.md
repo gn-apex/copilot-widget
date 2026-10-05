@@ -1,4 +1,35 @@
-# Changelog — Production-readiness pass
+# Changelog
+
+## v3 — Studio overhaul, multimodal input, auto theme, toasts
+
+### Widget
+- **Message width model rewritten.** A bubble now only wraps once it reaches its configured maximum width; short replies no longer break at random. Reasoning, tool, confirmation and action badges are exactly as wide as the bubble they belong to (previously they could be wider than the reply). Hover actions and timestamps never influence a bubble's width.
+- **Separate widths** for visitor and assistant bubbles (`messages.userMaxWidth`, `messages.aiMaxWidth`). A legacy `messages.maxWidth` in a saved config still loads and applies to both.
+- **Composer rebuilt.** Send button lives *inside* the text box, becomes a Stop button while the assistant replies, auto-grows to `composer.maxRows`, optional character counter, Enter / Shift+Enter / Ctrl+Enter behaviour, 5 input shapes, 3 send icons, 3 send styles.
+- **Space-bar bug fixed.** Host sites with global hotkeys (or modals/carousels) could cancel Space and other keys typed into the widget. Keystrokes from the input are now handled in the capture phase and kept away from the page, and any character that something earlier already cancelled is re-inserted. Verified against a page that cancels Space in both capture and bubble phase.
+- **Uploads for multimodal models** (Gemini / Gemma): attach button, drag & drop, paste screenshots, previews with remove, lightbox, count / size / type limits. Images are resized (max 1600px) and re-encoded to JPEG in the browser — a 2400×1600 photo became ~73 KB.
+- **Auto theme** (`theme.mode = "auto"`, now the default): follows the website the widget is on — `class="dark"` (next-themes, Tailwind), `data-theme` / `data-bs-theme` and friends, `color-scheme`, real page background luminance, then the OS — and flips live when the site's theme toggles.
+- **Separate light & dark colours** (`theme.splitColors`): every colour in Window, Messages and Input gets a dark twin (`bgDark`, `userBgDark`, …).
+- **Sounds:** 9 synthesised sounds (chime, pop, bubble, glass, marimba, droplet, harp, ping, bell) + volume + optional send pop. No audio files.
+- **Auto-open actually works now** (the timer was never started before): once per session, optional on phones, never after the visitor has engaged.
+- **Auto toasts:** configurable messages that rotate, delay / repeat / max-per-visit / duration, card · speech-bubble · pill styles, avatar, quick-reply buttons, progress bar with pause-on-hover, optional sound, "stay quiet after dismiss".
+- **Clear conversation:** trash button beside the close icon with a confirm step (`behavior.clearButton`).
+- **Markdown renderer rewritten:** nested lists, GFM tables with alignment, task lists, callouts (`> [!TIP]`), blockquotes, strikethrough, ==highlight==, `<kbd>`, autolinks, images, syntax-highlighted code (JS/TS, Python, shell, SQL, JSON, YAML, CSS, HTML, C-family, diff) with copy + wrap buttons, **LaTeX math** (fractions, roots, sums, matrices, cases, Greek, accents) — all without dependencies, and safe by construction.
+- **Rendering is incremental**: only the message that changed is rebuilt while streaming, so there is no flicker and open reasoning blocks stay open.
+- Copy and Regenerate on replies, scroll-to-latest button, entrance animations, "plain" (bubble-less) assistant style, sender name, online dot.
+- Security: server-supplied labels (reasoning, tools, actions) are no longer inserted as HTML; `NAVIGATE` actions only accept http(s)/relative/mailto/tel URLs.
+
+### Studio
+- **Context menu on right-click that changes with the area**: launcher, header, visitor bubble, assistant bubble, code block, reasoning/tools, suggestion chips, input, attachments, toast, window, nav items, individual settings (reset / copy / paste / use brand colour / min / max), the controls panel, the top bar and the stage. Quick-set radios and toggles apply live; "Customise…" jumps to the exact setting and pulses it. Shift + right-click gives the browser's own menu.
+- **21 keyboard shortcuts** from a single definition that also feeds the cheat-sheet (`?`) and the command palette: `⌘S` publish, `⌘K` palette, `⌘Z` / `⇧⌘Z` undo/redo, `1–9 / 0` jump to a section, `[ ]` step through sections, `D` device, `B` host background, `O` window, `T` toast, `E` sample conversation, `R` clear, `F` focus mode, `Alt+C/E/I/R` copy/export/import/reset section.
+- New sections: **Input & Uploads**, **Auto Toasts**; expanded Messages and Behaviour; new controls — sound picker with live audition, message-width visualiser with presets.
+- "Host site is Light / Dark" now drives Auto theme in the preview, so you can see exactly what happens when a customer's site switches theme.
+- Status bar, focus mode, sample conversation, toast preview, section copy/paste/reset.
+- Fixed: typing `/` or pressing ⌘Z inside the preview's text box used to be hijacked by the Studio (events from the widget's shadow DOM were retargeted to the host element).
+
+---
+
+## v2 — Production-readiness pass
 
 This pass focused on one thing: **making every control the Studio exposes actually do
 something on the live, embedded widget.** An audit turned up ~21 CSS custom properties

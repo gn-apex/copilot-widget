@@ -54,6 +54,10 @@ Make sure `public/cdn/copilot.js` is included in the backend's Docker image / de
 See `dashboard/INTEGRATION.md` (3 files + a small edit in Aitab.tsx).
 
 
+## What’s new in v3
+
+See **CHANGELOG.md** for the full list. Headlines: a rewritten width model (no more random wrapping, badges match their bubble), a composer with the send button inside the box, image/file uploads for Gemini/Gemma, an Auto theme that follows the host website (plus separate light/dark colours), 9 soft sounds, working auto-open, configurable auto-toasts, a clear-conversation button, a full markdown + LaTeX renderer, and a Studio with area-aware right-click menus and 21 shortcuts (press `?`).
+
 ## What’s new in this Studio (v2)
 
 ### Presentation modes (schema-driven)

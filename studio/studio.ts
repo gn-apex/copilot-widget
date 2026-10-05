@@ -6,7 +6,10 @@ import {
   type WidgetSchema,
 } from "../src/schema";
 import type { GxCopilot } from "../src/widget";
-import { SECTIONS, PRESETS, type Field, type Opt } from "./fields";
+import { SECTIONS, PRESETS, SPLIT_PATHS, type Field, type Opt } from "./fields";
+import { SOUNDS, playSound, unlockAudio, type SoundName } from "../src/sounds";
+import { showMenu, closeMenu, type MenuItem } from "./menu";
+import { match, fmt, parts as kbdParts, isMac as IS_MAC, type Sc } from "./shortcuts";
 import CSS from "./styles";
 
 export interface StudioOptions {
@@ -61,8 +64,7 @@ const opt = (o: Opt) =>
   typeof o === "string"
     ? { value: o, label: o[0].toUpperCase() + o.slice(1) }
     : o;
-const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
-const MOD = isMac ? "⌘" : "Ctrl";
+const MOD = IS_MAC ? "⌘" : "Ctrl";
 
 /* ───────────────────────── icons ───────────────────────── */
 const ICON_SVGS: Record<string, string> = {
@@ -110,6 +112,19 @@ const UI: Record<string, string> = {
   zap: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   embed: '<path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/>',
+  chev: '<path d="m9 6 6 6-6 6"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  pen: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  play: '<path d="m7 4 13 8-13 8z"/>',
+  volume: '<path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>',
+  focus: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>',
+  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
+  chat2: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
+  clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   alert:
     '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
 };
@@ -129,6 +144,8 @@ const SECTION_ICON: Record<string, string> = {
   persona: "user",
   messages: "message",
   behavior: "sliders",
+  composer: "pen",
+  toasts: "bell",
   advanced: "code",
 };
 
@@ -277,6 +294,8 @@ export function mountStudio(
       <button id="redo" class="btn icon ghost" title="Redo (${MOD}⇧Z)"></button>
       <button id="revert" class="btn ghost hide-md">Discard</button>
       <button id="cmdk" class="btn hide-sm" title="Command palette"><span id="cmdk-i"></span>Search <kbd>${MOD}K</kbd></button>
+      <button id="keys" class="btn icon ghost hide-sm" title="Keyboard shortcuts (?)"></button>
+      <button id="focus" class="btn icon ghost hide-sm" title="Focus on the preview (F)"></button>
       <button id="theme" class="btn icon ghost"></button>
       <button id="pub" class="btn primary"><span id="pub-i"></span><span id="pub-t">Publish</span></button>
       <button id="close" class="btn icon ghost" style="display:none" title="Close"></button>
@@ -290,12 +309,22 @@ export function mountStudio(
           <div class="seg hide-sm" id="bgs"><button data-v="light">Light</button><button data-v="dark">Dark</button><button data-v="site">Website</button></div>
           <label class="addr hide-md" id="addr"><span id="addr-i"></span><input id="site" placeholder="Paste your website URL to preview on it" spellcheck="false" /></label>
           <span class="sp"></span>
+          <button class="btn sm" id="pdemo" title="Fill the chat with a sample conversation (E)"><span id="pdemo-i"></span><span class="hide-md">Sample chat</span></button>
+          <button class="btn sm" id="ptoast" title="Show the auto-toast now (T)"><span id="ptoast-i"></span><span class="hide-md">Toast</span></button>
           <div class="seg" id="win"><button data-v="open">Window open</button><button data-v="closed">Closed</button></div>
           <label class="seg" id="livel" title="Send preview messages to your real AI"><button type="button" id="live"><span id="live-i"></span>Live AI</button></label>
         </div>
         <div class="gxs-wrap"><div class="stage" id="stage"><div class="fake" id="fake"></div><iframe id="frame" title="Website preview"></iframe></div></div>
       </div>
     </div>
+    <footer class="gxs-status" id="status">
+      <span class="st-sec" id="st-sec"></span><span class="st-dot"></span>
+      <span id="st-edit"></span>
+      <span class="sp"></span>
+      <span id="st-dev"></span><span class="st-dot hide-sm"></span>
+      <span id="st-host" class="hide-sm"></span>
+      <span class="st-hint hide-md"><b>Right-click</b> anything for tools · <kbd>?</kbd> shortcuts</span>
+    </footer>
     <div id="toast"></div>`;
   const $ = <T extends HTMLElement>(id: string) =>
     app.querySelector("#" + id) as T;
@@ -307,6 +336,10 @@ export function mountStudio(
   mountIcon("cmdk-i", "search");
   mountIcon("pub-i", "up");
   mountIcon("close", "x");
+  mountIcon("keys", "keyboard");
+  mountIcon("focus", "focus");
+  mountIcon("pdemo-i", "chat2");
+  mountIcon("ptoast-i", "bell");
   mountIcon("addr-i", "globe");
   mountIcon("live-i", "zap");
   app
@@ -322,9 +355,15 @@ export function mountStudio(
   const el = document.createElement("gnapex-copilot-root") as GxCopilot;
   el.style.cssText = "position:absolute;inset:0";
   stage.appendChild(el);
+  el.previewMode = true;
   const mock: GxCopilot["transport"] = async (m) => {
     await new Promise((r) => setTimeout(r, 650));
-    return `This is a preview reply. You asked: “${m[m.length - 1].content}”. Visitors will get real answers from your AI.`;
+    const last: any = m[m.length - 1];
+    const q = String(last.content || "").slice(0, 140);
+    const att = (last.attachments || []).length
+      ? `\n\nI can see **${last.attachments.length} attachment${last.attachments.length > 1 ? "s" : ""}** — in production they’re passed to your multimodal model.`
+      : "";
+    return `This is a **preview reply** to “${q}”.\n\n- Real answers come from your AI once published\n- Markdown renders like this: \`inline code\`, [links](https://example.com) and tables\n\n\`\`\`ts\nconst reply = "styled by the Studio";\n\`\`\`${att}`;
   };
   el.transport = mock;
   el.projectId = pid;
@@ -376,7 +415,8 @@ export function mountStudio(
   };
   const dirty = () => JSON.stringify(schema) !== published;
   const customised = (f: Field) =>
-    !same(get(schema, f.path), get(DEFAULTS, f.path));
+    !same(get(schema, f.path), get(DEFAULTS, f.path)) ||
+    (!!f.path2 && !same(get(schema, f.path2), get(DEFAULTS, f.path2)));
   const customCount = (id: string) =>
     SECTIONS.find((s) => s.id === id)!.fields.filter(customised).length;
   const totalCustom = () =>
@@ -422,17 +462,14 @@ export function mountStudio(
   function apply() {
     el.setConfig({
       ...schema,
+      composer: { ...schema.composer, autofocus: false },
       presentation: {
         ...schema.presentation,
         closeOnOutside: false,
         closeOnEscape: false,
       },
-      behavior: {
-        ...schema.behavior,
-        autoOpenAfterSeconds: 0,
-        persistChat: false,
-      },
     });
+    el.simulateHost = bg === "dark" ? "dark" : "light";
     el.setCompact(device === "mobile");
     const isDirty = dirty();
     const st = $("state");
@@ -454,6 +491,10 @@ export function mountStudio(
         : "Copy schema";
     stage.dataset.device = device;
     stage.dataset.bg = bg;
+    app.toggleAttribute("data-split", schema.theme.splitColors);
+    app.toggleAttribute("data-focus", focusMode);
+    $("focus").classList.toggle("on", focusMode);
+    updateStatus();
     $("frame").style.display = bg === "site" && site ? "block" : "none";
     app
       .querySelectorAll<HTMLElement>("#dev button")
@@ -623,7 +664,7 @@ export function mountStudio(
       );
     } else if (f.type === "range") {
       const out = h("output", {}, `${v}${f.unit ?? ""}`),
-        r = h("input", { type: "range", min: f.min, max: f.max, value: v });
+        r = h("input", { type: "range", min: f.min, max: f.max, step: f.step ?? 1, value: v });
       const fill = () =>
         r.style.setProperty(
           "--p",
@@ -703,7 +744,8 @@ export function mountStudio(
       input = h("label", { class: "switch" }, c, h("i"));
     } else if (f.type === "lines") {
       const list: string[] = [...(v as string[])];
-      const counter = h("span", { class: "counter" }, `${list.length}/8`);
+      const maxN = f.maxItems ?? 8;
+      const counter = h("span", { class: "counter" }, `${list.length}/${maxN}`);
       const chips = h("div", { class: "chips" });
       const field = h("input", {
         type: "text",
@@ -734,13 +776,13 @@ export function mountStudio(
           ),
           field,
         );
-        counter.textContent = `${list.length}/8`;
-        field.disabled = list.length >= 8;
+        counter.textContent = `${list.length}/${maxN}`;
+        field.disabled = list.length >= maxN;
       };
       field.onkeydown = (e) => {
         if ((e.key === "Enter" || e.key === ",") && field.value.trim()) {
           e.preventDefault();
-          if (list.length < 8) {
+          if (list.length < maxN) {
             list.push(field.value.trim().slice(0, 120));
             field.value = "";
             draw();
@@ -757,6 +799,96 @@ export function mountStudio(
       draw();
       extra = counter;
       input = chips;
+    } else if (f.type === "sound") {
+      const grid = h("div", { class: "sound-grid" });
+      SOUNDS.forEach((o) =>
+        grid.append(
+          h(
+            "button",
+            {
+              class: "sound-card" + (o.id === v ? " on" : ""),
+              title: o.hint,
+              onclick: (e: Event) => {
+                const b = e.currentTarget as HTMLElement;
+                unlockAudio();
+                pick(e, ".sound-card", o.id);
+                playSound(o.id as SoundName, schema.behavior.soundVolume / 100);
+                b.classList.remove("ping");
+                void b.offsetWidth;
+                b.classList.add("ping");
+              },
+            },
+            h("span", { class: "bars" }, h("i"), h("i"), h("i"), h("i")),
+            h("b", {}, o.label),
+            h("small", {}, o.hint),
+          ),
+        ),
+      );
+      input = grid;
+    } else if (f.type === "widths") {
+      const rows: [string, string, string][] = [
+        ["Visitor", f.path, "user"],
+        ["Assistant", f.path2!, "ai"],
+      ];
+      const bars: Record<string, HTMLElement> = {};
+      const outs: Record<string, HTMLElement> = {};
+      const ranges: Record<string, HTMLInputElement> = {};
+      const lane = h("div", { class: "wlane" });
+      const ctrl = h("div", { class: "wctrl" });
+      const quick = h("div", { class: "wquick" });
+      const fillR = (r: HTMLInputElement) =>
+        r.style.setProperty("--p", `${((+r.value - (f.min ?? 0)) / ((f.max ?? 100) - (f.min ?? 0))) * 100}%`);
+      const sync = () => {
+        for (const [, path, cls] of rows) {
+          const val = get(schema, path) as number;
+          bars[cls].style.width = val + "%";
+          outs[cls].textContent = val + "%";
+          ranges[cls].value = String(val);
+          fillR(ranges[cls]);
+        }
+        quick.querySelectorAll("button").forEach((b) => {
+          const [a, c] = (b as HTMLElement).dataset.v!.split(",").map(Number);
+          b.classList.toggle("on", a === get(schema, f.path) && c === get(schema, f.path2!));
+        });
+      };
+      for (const [label, path, cls] of rows) {
+        const row = h("div", { class: "wr " + cls });
+        row.append(h("div", { class: "wrow " + (cls === "user" ? "r" : "l") }, (bars[cls] = h("i", { class: "wb " + cls }, h("em", {}, label)))));
+        lane.append(row);
+        const r = h("input", { type: "range", min: f.min, max: f.max, step: 1, value: get(schema, path) }) as HTMLInputElement;
+        ranges[cls] = r;
+        outs[cls] = h("output");
+        r.oninput = () => {
+          set(schema, path, +r.value);
+          commit(path);
+          sync();
+        };
+        ctrl.append(h("div", { class: "rangerow w" }, h("span", { class: "wl" }, label), r, outs[cls]));
+      }
+      for (const [a, c, name] of [
+        [70, 85, "Tight"],
+        [80, 100, "Balanced"],
+        [90, 100, "Wide"],
+        [100, 100, "Full"],
+      ] as const)
+        quick.append(
+          h(
+            "button",
+            {
+              "data-v": `${a},${c}`,
+              title: `${name}: visitor ${a}% · assistant ${c}%`,
+              onclick: () => {
+                set(schema, f.path, a);
+                set(schema, f.path2!, c);
+                commit(f.path);
+                sync();
+              },
+            },
+            name,
+          ),
+        );
+      sync();
+      input = h("div", { class: "widths" }, lane, ctrl, quick);
     } else if (f.type === "textarea") {
       const t = h("textarea", {
         rows: f.path === "customCss" ? 10 : 3,
@@ -774,7 +906,13 @@ export function mountStudio(
 
     const wrap = h("div", {
       class: "field" + (f.type === "toggle" ? " inline" : ""),
+      "data-path": f.path,
     });
+    const splitTag = SPLIT_PATHS.includes(f.path)
+      ? h("span", { class: "sec split" }, "light")
+      : f.path.endsWith("Dark") && SPLIT_PATHS.includes(f.path.slice(0, -4))
+        ? h("span", { class: "sec split dk" }, "dark")
+        : null;
     const reset = h(
       "button",
       {
@@ -782,6 +920,7 @@ export function mountStudio(
         title: "Reset to default",
         onclick: () => {
           set(schema, f.path, structuredClone(get(DEFAULTS, f.path)));
+          if (f.path2) set(schema, f.path2, structuredClone(get(DEFAULTS, f.path2)));
           commit(f.path);
           renderBody();
         },
@@ -795,6 +934,7 @@ export function mountStudio(
         { class: "lbl" },
         h("label", {}, f.label),
         showSection ? h("span", { class: "sec" }, showSection) : null,
+        splitTag,
         extra,
         reset,
       ),
@@ -1082,6 +1222,11 @@ export function mountStudio(
     renderBody();
   }
 
+  const navKey = (id: string) => {
+    const ids = ["presets", ...SECTIONS.map((x) => x.id)];
+    const i = ids.indexOf(id);
+    return i < 9 ? String(i + 1) : i === ids.length - 1 ? "0" : "";
+  };
   function renderNav() {
     const nav = $("nav");
     nav.textContent = "";
@@ -1097,15 +1242,8 @@ export function mountStudio(
             "data-id": id,
             title,
             class: id === active && !query ? "on" : "",
-            onclick: () => {
-              active = id;
-              query = "";
-              if (id === "launcher") el.close();
-              else if (id !== "presets") el.open();
-              renderNav();
-              renderCtl();
-              apply();
-            },
+            "data-k": navKey(id),
+            onclick: () => goSection(id),
           },
           ico(SECTION_ICON[id] || "sliders"),
           h("span", { class: "t" }, title),
@@ -1119,7 +1257,7 @@ export function mountStudio(
         { class: "nav-foot" },
         h("b", {}, "Tip"),
         h("br"),
-        `Press ${MOD}K to jump anywhere, / to search settings, ${MOD}S to publish.`,
+        `${MOD}K jumps anywhere · 1–9 switch sections · ? lists every shortcut · right-click for tools.`,
       ),
     );
   }
@@ -1141,13 +1279,7 @@ export function mountStudio(
         g: "Go to",
         t,
         icon: SECTION_ICON[id] || "sliders",
-        run: () => {
-          active = id;
-          query = "";
-          renderNav();
-          renderCtl();
-          apply();
-        },
+        run: () => goSection(id),
       })),
       ...PRESETS.map((p) => ({
         g: "Apply template",
@@ -1156,49 +1288,21 @@ export function mountStudio(
         hint: p.desc,
         run: () => applyPreset(p),
       })),
-      {
-        g: "Actions",
-        t: "Publish changes",
-        icon: "up",
-        hint: `${MOD}S`,
-        run: () => publish(),
-      },
-      {
-        g: "Actions",
-        t: device === "desktop" ? "Preview on mobile" : "Preview on desktop",
-        icon: device === "desktop" ? "phone" : "monitor",
-        run: () => {
-          device = device === "desktop" ? "mobile" : "desktop";
-          apply();
-        },
-      },
-      {
-        g: "Actions",
-        t: "Copy schema JSON",
-        icon: "copy",
-        run: () => copy(JSON.stringify(schema, null, 2), "Schema JSON copied"),
-      },
-      {
-        g: "Actions",
-        t: "Copy embed code",
-        icon: "embed",
-        run: () => copy(embedCode(), "Embed code copied"),
-      },
-      { g: "Actions", t: "Import schema…", icon: "upload", run: doImport },
-      { g: "Actions", t: "Reset all settings", icon: "reset", run: resetAll },
+      ...SHORTCUTS.filter((x) => !x.hidden || x.id === "palette").filter((x) => x.id !== "palette" && x.id !== "jump").map((x) => ({
+        g: x.group,
+        t: x.label,
+        icon: x.icon || "zap",
+        hint: fmt(x.keys),
+        run: x.run,
+      })),
+      { g: "Tools", t: "Copy embed code", icon: "embed", run: () => copy(embedCode(), "Embed code copied") },
       ...SECTIONS.flatMap((s) =>
         s.fields.map((f) => ({
           g: "Settings",
           t: f.label,
           icon: SECTION_ICON[s.id],
           hint: s.title,
-          run: () => {
-            active = s.id;
-            query = "";
-            renderNav();
-            renderCtl();
-            apply();
-          },
+          run: () => locate(f.path),
         })),
       ),
     ];
@@ -1340,6 +1444,489 @@ export function mountStudio(
     }
   }
 
+
+  /* ───────── navigation, section tools, status ───────── */
+  let focusMode = false;
+  let stageW = 0,
+    stageH = 0;
+  const sectionOf = (path: string) =>
+    SECTIONS.find((s) => s.fields.some((f) => f.path === path || f.path2 === path));
+  const fieldDef = (path: string) => SECTIONS.flatMap((s) => s.fields).find((f) => f.path === path);
+  const secPaths = (id: string) =>
+    SECTIONS.find((s) => s.id === id)!.fields.flatMap((f) => (f.path2 ? [f.path, f.path2] : [f.path]));
+  const sectionDirty = (id: string) => secPaths(id).some((p) => !same(get(schema, p), get(DEFAULTS, p)));
+  const secTitle = (id: string) => (id === "presets" ? "Templates & tools" : SECTIONS.find((s) => s.id === id)!.title);
+
+  function refreshCtl() {
+    const y = ctl.scrollTop;
+    renderBody();
+    ctl.scrollTop = y;
+  }
+  function updateStatus() {
+    const sec = query ? "Search" : active === "presets" ? "Templates" : SECTIONS.find((s) => s.id === active)!.title;
+    $("st-sec").textContent = sec;
+    $("st-edit").textContent = `edit ${hi} / ${hist.length - 1}` + (dirty() ? " · unpublished" : "");
+    $("st-dev").textContent = `${device === "mobile" ? "Mobile" : "Desktop"} · ${stageW}×${stageH}`;
+    $("st-host").textContent = `host site: ${bg === "dark" ? "dark" : "light"}${schema.theme.mode === "auto" ? " · auto" : ""}`;
+  }
+  function goSection(id: string) {
+    active = id;
+    query = "";
+    if (id === "launcher" || id === "toasts") el.close();
+    else if (id !== "presets") el.open();
+    renderNav();
+    renderCtl();
+    apply();
+    if (id === "toasts" && schema.toasts.enabled) setTimeout(() => el.previewToast(), 380);
+  }
+  /** Jump to a setting, scroll it into view and pulse it. */
+  function locate(path: string) {
+    const sec = sectionOf(path);
+    if (!sec) return;
+    if (active !== sec.id || query) goSection(sec.id);
+    requestAnimationFrame(() => {
+      const w = ctl.querySelector<HTMLElement>(`[data-path="${path}"]`);
+      if (!w) return;
+      w.scrollIntoView({ block: "center", behavior: "smooth" });
+      w.classList.remove("flash");
+      void w.offsetWidth;
+      w.classList.add("flash");
+    });
+  }
+  async function resetSection(id: string) {
+    const t = secTitle(id);
+    if (id === "presets" || !sectionDirty(id)) return toast(`${t} is already at its defaults`);
+    if (!(await ask(`Reset “${t}”?`, "Every setting in this section returns to its default. You can undo this.", "Reset section", true))) return;
+    for (const p of secPaths(id)) set(schema, p, structuredClone(get(DEFAULTS, p)));
+    commit("reset:" + id);
+    renderCtl();
+    toast(`${t} reset`);
+  }
+  function copySection(id: string) {
+    if (id === "presets") return copy(JSON.stringify(schema, null, 2), "Full schema copied");
+    const o: Record<string, unknown> = {};
+    for (const p of secPaths(id)) o[p] = get(schema, p);
+    copy(JSON.stringify(o, null, 2), `${secTitle(id)} settings copied`);
+  }
+  async function pasteSection(id: string) {
+    try {
+      const o = JSON.parse(await navigator.clipboard.readText());
+      const allowed = new Set(id === "presets" ? [] : secPaths(id));
+      const next = structuredClone(schema);
+      let n = 0;
+      for (const [k, v] of Object.entries(o)) if (allowed.has(k)) (set(next, k, v), n++);
+      if (!n) throw new Error("none");
+      schema = resolve(next);
+      commit("paste:" + id);
+      renderCtl();
+      toast(`Pasted ${n} settings into ${secTitle(id)}`);
+    } catch {
+      toast("The clipboard doesn’t hold settings copied from this section", true);
+    }
+  }
+  async function pasteValue(f: Field) {
+    try {
+      const t = (await navigator.clipboard.readText()).trim();
+      let v: unknown = t;
+      if (f.type === "toggle") v = /^(true|1|on|yes)$/i.test(t);
+      else if (f.type === "range") v = parseFloat(t);
+      else if (f.type === "lines") v = JSON.parse(t);
+      else if (f.type === "color" && t && !/^#[0-9a-f]{6}$/i.test(t)) throw new Error("hex");
+      const next = structuredClone(schema);
+      set(next, f.path, v);
+      schema = resolve(next);
+      commit(f.path);
+      renderCtl();
+      toast("Value pasted");
+    } catch {
+      toast("The clipboard doesn’t hold a valid value for this setting", true);
+    }
+  }
+  const valueText = (path: string) => {
+    const v = get(schema, path);
+    return typeof v === "string" ? v : JSON.stringify(v);
+  };
+
+  /* ───────── shortcuts (single source of truth: keys, cheat-sheet, palette) ───────── */
+  const navIds = () => ["presets", ...SECTIONS.map((s) => s.id)];
+  const stepSection = (d: number) => {
+    const ids = navIds();
+    goSection(ids[(ids.indexOf(active) + d + ids.length) % ids.length]);
+  };
+  const toggleBg = () => {
+    bg = bg === "light" ? "dark" : bg === "dark" ? (site ? "site" : "light") : "light";
+    apply();
+    toast(`Host site preview: ${bg}${schema.theme.mode === "auto" && bg !== "site" ? " — the widget follows it" : ""}`);
+  };
+  const toggleDevice = () => {
+    device = device === "desktop" ? "mobile" : "desktop";
+    apply();
+  };
+  const toggleWindow = () => (el.opened ? el.close() : el.open());
+  const toggleFocus = () => {
+    focusMode = !focusMode;
+    apply();
+    if (focusMode) toast("Focus mode — press F to bring the panels back");
+  };
+  const previewToast = () => {
+    el.close();
+    setTimeout(() => el.previewToast(), 140);
+  };
+  const demoChat = () => {
+    el.open();
+    el.demo();
+  };
+  const resetChat = () => {
+    el.clear();
+    toast("Preview conversation cleared");
+  };
+  const focusSearch = () => {
+    if (active === "presets" && !query) {
+      /* the search box exists on every panel */
+    }
+    (app.querySelector("#q") as HTMLInputElement | null)?.focus();
+  };
+  const digitIds = () => navIds();
+
+  const SHORTCUTS: Sc[] = [
+    { id: "publish", keys: "mod+s", label: "Publish changes", group: "General", icon: "up", run: () => publish() },
+    { id: "palette", keys: "mod+k", label: "Command palette", group: "General", icon: "search", run: () => (app.querySelector(".ov") ? app.querySelector(".ov")!.remove() : palette()), hidden: true },
+    { id: "undo", keys: "mod+z", label: "Undo", group: "General", icon: "undo", run: () => hi > 0 && goto(hi - 1) },
+    { id: "redo", keys: "mod+shift+z", label: "Redo", group: "General", icon: "redo", run: () => hi < hist.length - 1 && goto(hi + 1) },
+    { id: "redo2", keys: "mod+y", label: "Redo", group: "General", icon: "redo", run: () => hi < hist.length - 1 && goto(hi + 1), hidden: true },
+    { id: "help", keys: "?", label: "Keyboard shortcuts", group: "General", icon: "keyboard", run: () => showShortcuts() },
+    { id: "search", keys: "/", label: "Search settings", group: "General", icon: "search", run: focusSearch },
+    { id: "focus", keys: "f", label: "Focus on the preview", group: "General", icon: "focus", run: toggleFocus },
+
+    { id: "jump", keys: "1", label: "Jump to a section (0 = last)", group: "Navigate", icon: "layout", show: ["1", "–", "9"], run: () => goSection(digitIds()[0]), hidden: false },
+    { id: "prev", keys: "[", label: "Previous section", group: "Navigate", icon: "sliders", run: () => stepSection(-1) },
+    { id: "next", keys: "]", label: "Next section", group: "Navigate", icon: "sliders", run: () => stepSection(1) },
+
+    { id: "device", keys: "d", label: "Toggle desktop / mobile", group: "Preview", icon: "phone", run: toggleDevice },
+    { id: "bg", keys: "b", label: "Cycle host-site background", group: "Preview", icon: "sun", run: toggleBg },
+    { id: "window", keys: "o", label: "Open / close the chat window", group: "Preview", icon: "chat", run: toggleWindow },
+    { id: "toast", keys: "t", label: "Preview the auto-toast", group: "Preview", icon: "bell", run: previewToast },
+    { id: "demo", keys: "e", label: "Load a sample conversation", group: "Preview", icon: "chat2", run: demoChat },
+    { id: "resetchat", keys: "r", label: "Clear the preview conversation", group: "Preview", icon: "trash", run: resetChat },
+
+    { id: "copyjson", keys: "alt+c", label: "Copy schema JSON", group: "Tools", icon: "copy", run: () => copy(JSON.stringify(schema, null, 2), "Schema JSON copied") },
+    { id: "export", keys: "alt+e", label: "Export as .json file", group: "Tools", icon: "download", run: () => (download(`copilot-${pid || "design"}.json`, JSON.stringify(schema, null, 2)), toast("Exported")) },
+    { id: "import", keys: "alt+i", label: "Import schema…", group: "Tools", icon: "upload", run: () => doImport() },
+    { id: "resetsec", keys: "alt+r", label: "Reset this section", group: "Tools", icon: "reset", run: () => resetSection(active) },
+    { id: "resetall", keys: "alt+shift+r", label: "Reset everything", group: "Tools", icon: "reset", run: () => resetAll() },
+  ];
+  const isSingle = (k: string) => !/(mod|alt)\+/.test(k);
+
+  function showShortcuts() {
+    modal((close) => {
+      const groups = ["General", "Navigate", "Preview", "Tools"];
+      const body = h("div", { class: "kgrid" });
+      for (const g of groups) {
+        const col = h("div", { class: "kgrp" }, h("h4", {}, g));
+        for (const sc of SHORTCUTS.filter((x) => x.group === g && !x.hidden)) {
+          col.append(
+            h(
+              "div",
+              { class: "krow" },
+              h("span", {}, sc.label),
+              h("span", { class: "kcap" }, ...(sc.show ?? kbdParts(sc.keys)).map((k) => h("kbd", {}, k))),
+            ),
+          );
+        }
+        if (g === "Navigate")
+          col.append(h("div", { class: "krow" }, h("span", {}, "Search every setting & command"), h("span", { class: "kcap" }, ...kbdParts("mod+k").map((k) => h("kbd", {}, k)))));
+        body.append(col);
+      }
+      return h(
+        "div",
+        { class: "dlg wide", role: "dialog", "aria-label": "Keyboard shortcuts" },
+        h("header", {}, h("h3", {}, "Keyboard shortcuts"), h("p", {}, "Single keys work whenever you aren’t typing in a field. Right-click any part of the preview or the controls for context tools — hold Shift to get the browser’s own menu.")),
+        h("div", { class: "dbody" }, body),
+        h("footer", {}, h("span", { class: "fnote" }, h("kbd", {}, "Esc"), " closes this"), h("button", { class: "btn primary", onclick: close }, "Got it")),
+      );
+    });
+  }
+
+  /* ───────── context menu: tools change with the area you right-click ───────── */
+  const optPairs = (path: string): [string, string][] =>
+    (fieldDef(path)?.options ?? []).map(opt).map((o) => [o.value, o.label] as [string, string]);
+  const setPath = (path: string, val: unknown) => {
+    set(schema, path, val);
+    commit(path);
+    refreshCtl();
+  };
+  const radio = (path: string, label: string, icon?: string): MenuItem => ({
+    label,
+    icon,
+    sub: optPairs(path).map(([v, l]) => ({ label: l, check: get(schema, path) === v, run: () => setPath(path, v) })),
+  });
+  const flag = (path: string, label: string, icon?: string): MenuItem => ({
+    label,
+    icon: icon,
+    check: !!get(schema, path),
+    run: () => setPath(path, !get(schema, path)),
+  });
+  const steps = (path: string, label: string, vals: number[], unit = "", icon?: string): MenuItem => ({
+    label,
+    icon,
+    sub: vals.map((v) => ({ label: v + unit, check: get(schema, path) === v, run: () => setPath(path, v) })),
+  });
+  const edit = (path: string, label: string, icon = "sliders"): MenuItem => ({ label, icon, run: () => locate(path) });
+  const SEP: MenuItem = { sep: true };
+
+  const common = (): MenuItem[] => [
+    SEP,
+    { label: "Command palette", icon: "search", kbd: fmt("mod+k"), run: () => palette() },
+    { label: "Keyboard shortcuts", icon: "keyboard", kbd: "?", run: showShortcuts },
+  ];
+  const stageItems = (): MenuItem[] => [
+    { label: el.opened ? "Close chat window" : "Open chat window", icon: "chat", kbd: "O", run: toggleWindow },
+    { label: "Preview auto-toast", icon: "bell", kbd: "T", run: previewToast },
+    { label: "Load sample conversation", icon: "chat2", kbd: "E", run: demoChat },
+    { label: "Clear conversation", icon: "trash", kbd: "R", run: resetChat },
+    SEP,
+    {
+      label: "Device",
+      icon: "phone",
+      sub: [
+        { label: "Desktop", check: device === "desktop", run: () => ((device = "desktop"), apply()) },
+        { label: "Mobile", check: device === "mobile", run: () => ((device = "mobile"), apply()) },
+      ],
+    },
+    {
+      label: "Host site is…",
+      icon: "sun",
+      kbd: "B",
+      sub: [
+        { label: "Light", check: bg === "light", run: () => ((bg = "light"), apply()) },
+        { label: "Dark", check: bg === "dark", run: () => ((bg = "dark"), apply()) },
+        { label: "My website", check: bg === "site", disabled: !site, run: () => ((bg = "site"), apply()) },
+      ],
+    },
+    { label: focusMode ? "Show panels" : "Focus on preview", icon: "focus", kbd: "F", run: toggleFocus },
+    SEP,
+    { label: "Copy embed code", icon: "embed", run: () => copy(embedCode(), "Embed code copied") },
+  ];
+
+  type Area = { title: string; dot: string; items: MenuItem[] };
+  function areaFor(e: MouseEvent): Area {
+    const path = e.composedPath().filter((n): n is Element => n instanceof Element);
+    const hit = (sel: string) => path.find((n) => n.matches(sel));
+    const text = (n?: Element) => (n?.textContent || "").trim();
+
+    if (path.includes(el)) {
+      if (hit(".toast"))
+        return {
+          title: "Auto toast",
+          dot: "#f59e0b",
+          items: [
+            edit("toasts.messages", "Edit toast messages…", "bell"),
+            radio("toasts.style", "Style", "palette"),
+            flag("toasts.sound", "Play a sound", "volume"),
+            flag("toasts.dismissible", "Dismiss button"),
+            SEP,
+            { label: "Show it again", icon: "play", kbd: "T", run: previewToast },
+            flag("toasts.enabled", "Toasts enabled", "bell"),
+          ],
+        };
+      if (hit(".launcher"))
+        return {
+          title: "Launcher button",
+          dot: "var(--ac)",
+          items: [
+            edit("launcher.shape", "Customise launcher…", "chat"),
+            { label: el.opened ? "Close chat" : "Open chat", icon: "chat", kbd: "O", run: toggleWindow },
+            SEP,
+            radio("launcher.shape", "Shape"),
+            radio("launcher.position", "Position"),
+            steps("launcher.size", "Size", [48, 56, 64, 72, 80], "px"),
+            flag("launcher.pulse", "Attention pulse"),
+            flag("launcher.glow", "Glow"),
+          ],
+        };
+      if (hit(".code-block"))
+        return {
+          title: "Code block",
+          dot: "#a78bfa",
+          items: [
+            radio("messages.codeTheme", "Code theme", "code"),
+            edit("messages.codeTheme", "Customise rich content…", "code"),
+            { label: "Copy code", icon: "copy", run: () => copy(text(hit(".code-block")?.querySelector("pre") || undefined), "Code copied") },
+          ],
+        };
+      if (hit(".m.user"))
+        return {
+          title: "Visitor bubble",
+          dot: "var(--ac)",
+          items: [
+            edit("messages.userBg", "Customise visitor bubble…", "message"),
+            radio("messages.bubbleStyle", "Bubble style"),
+            radio("messages.userAlign", "Alignment"),
+            steps("messages.userMaxWidth", "Max width", [60, 70, 80, 90, 100], "%"),
+            steps("messages.fontSize", "Text size", [12, 13, 13.5, 14, 15, 16], "px"),
+            SEP,
+            { label: "Copy message", icon: "copy", run: () => copy(text(hit(".m.user")), "Message copied") },
+          ],
+        };
+      if (hit(".m.assistant") || hit(".action-chip") || hit(".tbl-wrap"))
+        return {
+          title: "Assistant bubble",
+          dot: "#38bdf8",
+          items: [
+            edit("messages.aiBg", "Customise assistant bubble…", "message"),
+            radio("messages.aiStyle", "Reply style"),
+            radio("messages.bubbleStyle", "Bubble style"),
+            steps("messages.aiMaxWidth", "Max width", [70, 85, 100], "%"),
+            flag("messages.aiBorder", "Outline"),
+            radio("messages.codeTheme", "Code blocks", "code"),
+            SEP,
+            { label: "Copy reply", icon: "copy", run: () => copy(text(hit(".m.assistant")), "Reply copied") },
+          ],
+        };
+      if (hit(".reasoning-block") || hit(".tool-block"))
+        return {
+          title: "Reasoning & tools",
+          dot: "#f472b6",
+          items: [flag("messages.showReasoning", "Show thinking blocks", "zap"), flag("messages.showTools", "Show tool badges", "zap"), edit("messages.showReasoning", "Customise details…", "message")],
+        };
+      if (hit(".chip"))
+        return { title: "Suggested question", dot: "#34d399", items: [edit("behavior.suggestedQuestions", "Edit suggested questions…", "pen")] };
+      if (hit(".atts") || hit(".pa"))
+        return { title: "Attachments", dot: "#fb923c", items: [edit("composer.uploads", "Upload settings…", "pen"), steps("composer.maxFiles", "Files per message", [1, 2, 4, 6, 10]), steps("composer.maxSizeMB", "Max size", [2, 5, 8, 12, 20], " MB")] };
+      if (hit(".composer"))
+        return {
+          title: "Message input",
+          dot: "#fb923c",
+          items: [
+            edit("composer.style", "Customise input…", "pen"),
+            radio("composer.style", "Shape"),
+            radio("composer.sendIcon", "Send icon"),
+            radio("composer.sendStyle", "Send button"),
+            SEP,
+            flag("composer.uploads", "Allow attachments", "pen"),
+            { ...radio("composer.attachPlacement", "Attach button"), disabled: !schema.composer.uploads },
+            flag("composer.sendOnEnter", "Enter sends"),
+            flag("composer.showHint", "Show keyboard hint"),
+          ],
+        };
+      if (hit("header") || hit(".fbar"))
+        return {
+          title: "Header",
+          dot: "#facc15",
+          items: [
+            edit("persona.name", "Edit assistant persona…", "user"),
+            radio("panel.headerStyle", "Header style", "palette"),
+            flag("panel.showHeader", "Show header"),
+            flag("persona.showStatus", "Online status dot"),
+            flag("behavior.persistChat", "Remember conversation"),
+            radio("behavior.clearButton", "Clear-chat button", "trash"),
+          ],
+        };
+      if (hit(".brand"))
+        return { title: "Branding", dot: "#94a3b8", items: [flag("panel.showBranding", "Show “Powered by” line")] };
+      return {
+        title: "Chat window",
+        dot: "#818cf8",
+        items: [
+          edit("panel.bg", "Customise window…", "window"),
+          radio("presentation.mode", "Presentation", "layout"),
+          radio("theme.mode", "Appearance", "sun"),
+          flag("theme.splitColors", "Separate light & dark colours"),
+          flag("theme.glass", "Glass effect"),
+          radio("theme.shadow", "Shadow"),
+          steps("panel.width", "Width", [340, 380, 420, 480], "px"),
+          SEP,
+          { label: "Load sample conversation", icon: "chat2", kbd: "E", run: demoChat },
+          { label: "Clear conversation", icon: "trash", kbd: "R", run: resetChat },
+        ],
+      };
+    }
+
+    const navBtn = hit("nav button[data-id]") as HTMLElement | undefined;
+    if (navBtn) {
+      const id = navBtn.dataset.id!;
+      return {
+        title: secTitle(id),
+        dot: "var(--ac)",
+        items: [
+          { label: "Open section", icon: SECTION_ICON[id] || "sliders", run: () => goSection(id) },
+          SEP,
+          { label: "Reset section", icon: "reset", kbd: id === active ? fmt("alt+r") : undefined, disabled: id === "presets" || !sectionDirty(id), danger: true, run: () => resetSection(id) },
+          { label: "Copy section settings", icon: "copy", run: () => copySection(id) },
+          { label: "Paste section settings", icon: "clipboard", disabled: id === "presets", run: () => pasteSection(id) },
+        ],
+      };
+    }
+
+    const fieldEl = hit(".field[data-path]") as HTMLElement | undefined;
+    if (fieldEl) {
+      const f = fieldDef(fieldEl.dataset.path!);
+      if (f) {
+        const def = get(DEFAULTS, f.path);
+        const items: MenuItem[] = [
+          { label: "Reset to default", icon: "reset", disabled: !customised(f), run: () => { set(schema, f.path, structuredClone(def)); if (f.path2) set(schema, f.path2, structuredClone(get(DEFAULTS, f.path2))); commit(f.path); renderBody(); } },
+          SEP,
+          { label: "Copy value", icon: "copy", run: () => copy(valueText(f.path), "Value copied") },
+          { label: "Paste value", icon: "clipboard", disabled: f.type === "widths" || f.type === "icon", run: () => pasteValue(f) },
+          { label: "Copy setting path", icon: "code", run: () => copy(f.path, `Copied “${f.path}”`) },
+        ];
+        if (f.type === "color") {
+          items.push(SEP, { label: "Use brand colour", icon: "palette", run: () => setPath(f.path, schema.theme.primaryColor) });
+          if (f.optional) items.push({ label: "Clear (automatic)", icon: "x", disabled: !get(schema, f.path), run: () => setPath(f.path, "") });
+        }
+        if (f.type === "range") {
+          const mn = f.min ?? 0, mx = f.max ?? 100;
+          items.push(SEP, { label: "Set to minimum", icon: "up", run: () => setPath(f.path, mn) }, { label: "Set to maximum", icon: "up", run: () => setPath(f.path, mx) });
+        }
+        return { title: f.label, dot: "var(--ac)", items };
+      }
+    }
+
+    if (hit(".gxs-panel"))
+      return {
+        title: secTitle(active),
+        dot: "var(--ac)",
+        items: [
+          { label: "Search settings", icon: "search", kbd: "/", run: focusSearch },
+          SEP,
+          { label: "Reset this section", icon: "reset", kbd: fmt("alt+r"), danger: true, disabled: active === "presets" || !sectionDirty(active), run: () => resetSection(active) },
+          { label: "Copy section settings", icon: "copy", run: () => copySection(active) },
+          { label: "Paste section settings", icon: "clipboard", disabled: active === "presets", run: () => pasteSection(active) },
+        ],
+      };
+
+    if (hit(".gxs-top"))
+      return {
+        title: "Studio",
+        dot: "var(--ac)",
+        items: [
+          { label: "Publish changes", icon: "up", kbd: fmt("mod+s"), disabled: connected && !dirty(), run: () => publish() },
+          { label: "Undo", icon: "undo", kbd: fmt("mod+z"), disabled: hi === 0, run: () => goto(hi - 1) },
+          { label: "Redo", icon: "redo", kbd: fmt("mod+shift+z"), disabled: hi >= hist.length - 1, run: () => goto(hi + 1) },
+          { label: "Discard unpublished changes", icon: "x", danger: true, disabled: !dirty(), run: () => ($("revert") as HTMLButtonElement).click() },
+          SEP,
+          { label: "Copy schema JSON", icon: "copy", kbd: fmt("alt+c"), run: () => copy(JSON.stringify(schema, null, 2), "Schema JSON copied") },
+          { label: "Export .json", icon: "download", kbd: fmt("alt+e"), run: () => (download(`copilot-${pid || "design"}.json`, JSON.stringify(schema, null, 2)), toast("Exported")) },
+          { label: "Import schema…", icon: "upload", kbd: fmt("alt+i"), run: doImport },
+          { label: "Reset everything", icon: "reset", kbd: fmt("alt+shift+r"), danger: true, run: () => resetAll() },
+        ],
+      };
+
+    return { title: "Preview stage", dot: "#818cf8", items: stageItems() };
+  }
+
+  function onContext(e: MouseEvent) {
+    if (e.shiftKey) return; // Shift + right-click = the browser's own menu
+    const first = e.composedPath()[0] as HTMLElement | undefined;
+    const inWidget = e.composedPath().includes(el);
+    // keep native cut/copy/paste inside the Studio's own text inputs
+    if (!inWidget && first && /^(INPUT|TEXTAREA)$/.test(first.tagName) && (first as HTMLInputElement).type !== "range" && (first as HTMLInputElement).type !== "color" && (first as HTMLInputElement).type !== "checkbox") return;
+    if (app.querySelector(".ov")) return;
+    e.preventDefault();
+    const a = areaFor(e);
+    showMenu(e.clientX, e.clientY, [...a.items, ...common()], { title: a.title, dot: a.dot, ico, host: app });
+  }
+
   /* ───────── wiring ───────── */
   $("proj").textContent =
     opts.projectName || (connected ? pid || "connected" : "offline demo");
@@ -1409,6 +1996,18 @@ export function mountStudio(
     renderCtl();
   };
   $("cmdk").onclick = palette;
+  $("keys").onclick = showShortcuts;
+  $("focus").onclick = toggleFocus;
+  $("ptoast").onclick = previewToast;
+  $("pdemo").onclick = demoChat;
+  app.addEventListener("contextmenu", onContext);
+  app.addEventListener("pointerdown", () => unlockAudio(), { once: true });
+  const ro = new ResizeObserver(() => {
+    stageW = Math.round(stage.clientWidth);
+    stageH = Math.round(stage.clientHeight);
+    updateStatus();
+  });
+  ro.observe(stage);
   $("pub").onclick = publish;
   if (opts.onClose) {
     const c = $("close");
@@ -1427,26 +2026,35 @@ export function mountStudio(
     };
   }
   const keys = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    const typing = /INPUT|TEXTAREA|SELECT/.test(target.tagName);
-    const m = e.ctrlKey || e.metaKey;
-    if (!m) {
-      if (e.key === "/" && !typing && !app.querySelector(".ov")) {
-        e.preventDefault();
-        ($("q") as HTMLInputElement | null)?.focus();
-      } else if (e.key === "Escape") app.querySelector(".ov")?.remove();
+    // composedPath()[0] is the real origin, even for events coming out of the preview widget's shadow DOM
+    const t = e.composedPath()[0] as HTMLElement | undefined;
+    const typing = !!t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable);
+    const overlay = !!app.querySelector(".ov");
+    if (app.querySelector(".cmenu")) return; // an open menu owns the keyboard (it handles Esc, arrows, Enter itself)
+    if (e.key === "Escape") {
+      if (overlay) app.querySelector(".ov")!.remove();
       return;
     }
-    const k = e.key.toLowerCase();
-    if (k === "s") {
+    // digits 1-9 / 0 jump straight to a section
+    if (!typing && !overlay && !e.ctrlKey && !e.metaKey && !e.altKey && /^(Digit|Numpad)\d$/.test(e.code)) {
+      const d = +e.code.slice(-1);
+      const ids = navIds();
+      const id = d === 0 ? ids[ids.length - 1] : ids[d - 1];
+      if (id) {
+        e.preventDefault();
+        goSection(id);
+      }
+      return;
+    }
+    for (const sc of SHORTCUTS) {
+      if (sc.id === "jump" || !match(e, sc.keys)) continue;
+      const single = isSingle(sc.keys);
+      if (single && (typing || overlay)) continue;
+      if ((sc.id === "undo" || sc.id === "redo" || sc.id === "redo2") && typing) continue; // keep native text undo
+      if (overlay && !single && sc.id !== "palette" && sc.id !== "publish") continue;
       e.preventDefault();
-      publish();
-    } else if (k === "k") {
-      e.preventDefault();
-      app.querySelector(".ov") ? app.querySelector(".ov")!.remove() : palette();
-    } else if (k === "z" && !typing) {
-      e.preventDefault();
-      e.shiftKey ? $("redo").click() : $("undo").click();
+      sc.run();
+      return;
     }
   };
   const warn = (e: BeforeUnloadEvent) => {
@@ -1466,6 +2074,9 @@ export function mountStudio(
   if (connected) load();
   return () => {
     mo.disconnect();
+    ro.disconnect();
+    closeMenu();
+    app.removeEventListener("contextmenu", onContext);
     document.removeEventListener("keydown", keys);
     removeEventListener("beforeunload", warn);
     el.remove();

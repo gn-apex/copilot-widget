@@ -16,11 +16,18 @@ export type Field = {
     | "toggle"
     | "lines"
     | "icon"
-    | "mode";
+    | "mode"
+    | "sound"
+    | "widths";
   options?: Opt[];
   min?: number;
   max?: number;
+  step?: number;
   unit?: string;
+  /** widths control: the second value (assistant) */
+  path2?: string;
+  /** lines control: max entries (default 8) */
+  maxItems?: number;
   /** color only: empty string is allowed and means "automatic" */
   optional?: boolean;
   /** Visual group within a section */
@@ -141,7 +148,19 @@ export const SECTIONS: Section[] = [
         path: "theme.mode",
         label: "Appearance",
         type: "segment",
-        options: ["light", "dark", "system"],
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+          { value: "system", label: "OS" },
+        ],
+        hint: "Auto follows the website the widget sits on — next-themes, class=\"dark\", data-theme, colour-scheme or the page’s real background — and switches live when the visitor toggles the site theme. OS follows only the device setting.",
+      },
+      {
+        path: "theme.splitColors",
+        label: "Separate light & dark colours",
+        type: "toggle",
+        hint: "Off: one palette for both. On: every colour in Window, Messages and Input gets a second field for dark mode. Pair with Appearance → Auto.",
       },
       {
         path: "theme.radius",
@@ -606,16 +625,22 @@ export const SECTIONS: Section[] = [
         label: "Typing indicator",
         type: "toggle",
       },
+      {
+        path: "persona.showStatus",
+        label: "Online status dot",
+        type: "toggle",
+        hint: "A softly pulsing green dot on the avatar.",
+      },
     ],
   },
   {
     id: "messages",
     title: "Messages",
     icon: "💬",
-    blurb: "Bubble shape, colours and typography",
+    blurb: "Bubble shape, widths, colours, typography and motion",
     fields: [
       {
-        group: "Layout",
+        group: "Shape",
         path: "messages.bubbleStyle",
         label: "Bubble style",
         type: "segment",
@@ -627,9 +652,20 @@ export const SECTIONS: Section[] = [
         ],
       },
       {
-        group: "Layout",
+        group: "Shape",
+        path: "messages.aiStyle",
+        label: "Assistant replies",
+        type: "segment",
+        options: [
+          { value: "bubble", label: "In a bubble" },
+          { value: "plain", label: "Plain text" },
+        ],
+        hint: "Plain text drops the bubble and lets replies flow on the window — the Gemini / ChatGPT look.",
+      },
+      {
+        group: "Shape",
         path: "messages.userAlign",
-        label: "Your visitor’s messages",
+        label: "Visitor’s messages",
         type: "segment",
         options: [
           { value: "right", label: "Right" },
@@ -637,24 +673,52 @@ export const SECTIONS: Section[] = [
         ],
       },
       {
-        group: "Layout",
-        path: "messages.maxWidth",
-        label: "Bubble max width",
-        type: "range",
-        min: 55,
+        group: "Width",
+        path: "messages.userMaxWidth",
+        path2: "messages.aiMaxWidth",
+        label: "Maximum bubble width",
+        type: "widths",
+        min: 40,
         max: 100,
-        unit: "%",
+        hint: "A bubble only wraps once it reaches this width. Reasoning, tool and action badges always match the bubble they belong to.",
       },
       {
-        group: "Layout",
+        group: "Rhythm",
+        path: "messages.gap",
+        label: "Space between messages",
+        type: "range",
+        min: 2,
+        max: 36,
+        unit: "px",
+      },
+      {
+        group: "Rhythm",
+        path: "messages.padding",
+        label: "Bubble padding",
+        type: "range",
+        min: 4,
+        max: 24,
+        unit: "px",
+      },
+      {
+        group: "Type",
         path: "messages.fontSize",
         label: "Text size",
         type: "range",
         min: 11,
         max: 18,
+        step: 0.5,
         unit: "px",
       },
-
+      {
+        group: "Type",
+        path: "messages.lineHeight",
+        label: "Line height",
+        type: "range",
+        min: 1.25,
+        max: 2,
+        step: 0.05,
+      },
       {
         group: "Visitor bubble",
         path: "messages.userBg",
@@ -671,7 +735,6 @@ export const SECTIONS: Section[] = [
         optional: true,
         hint: "Empty = automatic contrast.",
       },
-
       {
         group: "Assistant bubble",
         path: "messages.aiBg",
@@ -693,7 +756,41 @@ export const SECTIONS: Section[] = [
         label: "Outline",
         type: "toggle",
       },
-
+      {
+        group: "Rich content",
+        path: "messages.codeTheme",
+        label: "Code blocks",
+        type: "segment",
+        options: [
+          { value: "dark", label: "Dark" },
+          { value: "light", label: "Light" },
+          { value: "auto", label: "Match theme" },
+        ],
+        hint: "Replies render full markdown: headings, lists, tables, task lists, callouts, syntax-highlighted code with copy, and LaTeX maths.",
+      },
+      {
+        group: "Details",
+        path: "messages.animate",
+        label: "Entrance animation",
+        type: "segment",
+        options: [
+          { value: "rise", label: "Rise" },
+          { value: "fade", label: "Fade" },
+          { value: "pop", label: "Pop" },
+          { value: "none", label: "None" },
+        ],
+      },
+      {
+        group: "Details",
+        path: "messages.showActions",
+        label: "Copy & regenerate buttons",
+        type: "segment",
+        options: [
+          { value: "hover", label: "On hover" },
+          { value: "always", label: "Always" },
+          { value: "off", label: "Off" },
+        ],
+      },
       {
         group: "Details",
         path: "messages.showAvatar",
@@ -702,9 +799,179 @@ export const SECTIONS: Section[] = [
       },
       {
         group: "Details",
+        path: "messages.showSender",
+        label: "Assistant name above replies",
+        type: "toggle",
+      },
+      {
+        group: "Details",
         path: "messages.showTimestamps",
         label: "Show timestamps",
         type: "toggle",
+      },
+      {
+        group: "Details",
+        path: "messages.showReasoning",
+        label: "Show “thinking” blocks",
+        type: "toggle",
+      },
+      {
+        group: "Details",
+        path: "messages.showTools",
+        label: "Show tool-use badges",
+        type: "toggle",
+      },
+    ],
+  },
+  {
+    id: "composer",
+    title: "Input & Uploads",
+    icon: "✍️",
+    blurb: "The text box, send button and multimodal attachments",
+    fields: [
+      {
+        group: "Look",
+        path: "composer.style",
+        label: "Input shape",
+        type: "segment",
+        options: [
+          { value: "auto", label: "Auto" },
+          { value: "pill", label: "Pill" },
+          { value: "rounded", label: "Rounded" },
+          { value: "square", label: "Square" },
+          { value: "line", label: "Line" },
+        ],
+      },
+      {
+        group: "Look",
+        path: "composer.sendIcon",
+        label: "Send icon",
+        type: "segment",
+        options: [
+          { value: "arrow", label: "Arrow" },
+          { value: "plane", label: "Plane" },
+          { value: "chevron", label: "Chevron" },
+        ],
+        hint: "The send button always sits inside the text box and becomes a stop button while the assistant is replying.",
+      },
+      {
+        group: "Look",
+        path: "composer.sendStyle",
+        label: "Send button",
+        type: "segment",
+        options: [
+          { value: "solid", label: "Solid" },
+          { value: "soft", label: "Soft" },
+          { value: "ghost", label: "Ghost" },
+        ],
+      },
+      {
+        group: "Typing",
+        path: "composer.sendOnEnter",
+        label: "Enter sends",
+        type: "toggle",
+        hint: "On: Enter sends, Shift+Enter adds a line. Off: Ctrl/⌘+Enter sends.",
+      },
+      {
+        group: "Typing",
+        path: "composer.maxRows",
+        label: "Grow up to",
+        type: "range",
+        min: 2,
+        max: 10,
+        unit: " lines",
+      },
+      {
+        group: "Typing",
+        path: "composer.maxChars",
+        label: "Character limit",
+        type: "range",
+        min: 0,
+        max: 8000,
+        step: 100,
+        hint: "0 = unlimited. A counter appears at 80%.",
+      },
+      {
+        group: "Typing",
+        path: "composer.showHint",
+        label: "Show keyboard hint",
+        type: "toggle",
+      },
+      {
+        group: "Typing",
+        path: "composer.autofocus",
+        label: "Focus when the chat opens",
+        type: "toggle",
+        hint: "Skipped on touch devices so the keyboard doesn’t jump up.",
+      },
+      {
+        group: "Attachments",
+        path: "composer.uploads",
+        label: "Allow attachments",
+        type: "toggle",
+        hint: "Sent to your multimodal model (Gemini / Gemma) as inline parts. Images are resized and compressed in the browser first.",
+      },
+      {
+        group: "Attachments",
+        path: "composer.accept",
+        label: "Accepted files",
+        type: "segment",
+        when: (s) => s.composer.uploads,
+        options: [
+          { value: "images", label: "Images" },
+          { value: "images-docs", label: "Images + docs" },
+          { value: "any", label: "Any" },
+        ],
+      },
+      {
+        group: "Attachments",
+        path: "composer.attachIcon",
+        label: "Attach icon",
+        type: "segment",
+        when: (s) => s.composer.uploads,
+        options: [
+          { value: "paperclip", label: "Clip" },
+          { value: "plus", label: "Plus" },
+          { value: "image", label: "Image" },
+        ],
+      },
+      {
+        group: "Attachments",
+        path: "composer.attachPlacement",
+        label: "Attach button",
+        type: "segment",
+        when: (s) => s.composer.uploads,
+        options: [
+          { value: "inside", label: "Inside the box" },
+          { value: "outside", label: "Beside it" },
+        ],
+      },
+      {
+        group: "Attachments",
+        path: "composer.maxFiles",
+        label: "Files per message",
+        type: "range",
+        when: (s) => s.composer.uploads,
+        min: 1,
+        max: 10,
+      },
+      {
+        group: "Attachments",
+        path: "composer.maxSizeMB",
+        label: "Max size per file",
+        type: "range",
+        when: (s) => s.composer.uploads,
+        min: 1,
+        max: 20,
+        unit: " MB",
+      },
+      {
+        group: "Attachments",
+        path: "composer.dragDrop",
+        label: "Drag & drop onto the window",
+        type: "toggle",
+        when: (s) => s.composer.uploads,
+        hint: "Pasting a screenshot (Ctrl/⌘+V) always works too.",
       },
     ],
   },
@@ -712,7 +979,7 @@ export const SECTIONS: Section[] = [
     id: "behavior",
     title: "Behaviour",
     icon: "⚙️",
-    blurb: "Prompts, automation and extras",
+    blurb: "Prompts, automation, sound and memory",
     fields: [
       {
         path: "behavior.placeholder",
@@ -723,27 +990,223 @@ export const SECTIONS: Section[] = [
         path: "behavior.suggestedQuestions",
         label: "Suggested questions",
         type: "lines",
-        hint: "One per line, up to 8. Shown as quick-reply chips.",
+        hint: "Up to 8. Shown as quick-reply chips until the first message.",
       },
       {
+        group: "Auto-open",
         path: "behavior.autoOpenAfterSeconds",
-        label: "Auto-open after",
+        label: "Open the chat after",
         type: "range",
         min: 0,
         max: 60,
         unit: "s",
-        hint: "0 = never. Disabled inside Studio preview.",
+        hint: "0 = never. Never fires inside the Studio preview, and never after the visitor has already opened the chat.",
       },
       {
+        group: "Auto-open",
+        path: "behavior.autoOpenOncePerSession",
+        label: "Only once per visit",
+        type: "toggle",
+        when: (s) => s.behavior.autoOpenAfterSeconds > 0,
+      },
+      {
+        group: "Auto-open",
+        path: "behavior.autoOpenOnMobile",
+        label: "Also on phones",
+        type: "toggle",
+        when: (s) => s.behavior.autoOpenAfterSeconds > 0,
+        hint: "Off by default — a full-screen takeover on mobile is disruptive.",
+      },
+      {
+        group: "Sound",
         path: "behavior.soundOnReply",
-        label: "Soft sound on reply",
+        label: "Play a sound on reply",
         type: "toggle",
       },
       {
+        group: "Sound",
+        path: "behavior.sound",
+        label: "Reply sound",
+        type: "sound",
+        when: (s) => s.behavior.soundOnReply,
+        hint: "Click a card to hear it. All sounds are synthesised in the browser — nothing to download.",
+      },
+      {
+        group: "Sound",
+        path: "behavior.soundVolume",
+        label: "Volume",
+        type: "range",
+        min: 0,
+        max: 100,
+        unit: "%",
+        when: (s) => s.behavior.soundOnReply || s.behavior.soundOnSend || s.toasts.sound,
+      },
+      {
+        group: "Sound",
+        path: "behavior.soundOnSend",
+        label: "Tiny pop when sending",
+        type: "toggle",
+      },
+      {
+        group: "Memory",
         path: "behavior.persistChat",
         label: "Remember conversation",
         type: "toggle",
         hint: "Stores chat in the visitor’s browser (localStorage).",
+      },
+      {
+        group: "Memory",
+        path: "behavior.clearButton",
+        label: "Clear-conversation button",
+        type: "segment",
+        options: [
+          { value: "auto", label: "When remembering" },
+          { value: "always", label: "Always" },
+          { value: "never", label: "Never" },
+        ],
+        hint: "A trash icon next to the close button, with a confirm step.",
+      },
+    ],
+  },
+  {
+    id: "toasts",
+    title: "Auto Toasts",
+    icon: "🔔",
+    blurb: "Gentle nudges that float above the launcher",
+    fields: [
+      {
+        path: "toasts.enabled",
+        label: "Show toasts",
+        type: "toggle",
+        hint: "A small message from the assistant — “Need help?” — that appears after a delay. Click ▸ Preview toast in the stage bar (or press T) to see it.",
+      },
+      {
+        group: "Content",
+        path: "toasts.messages",
+        label: "Messages",
+        type: "lines",
+        when: (s) => s.toasts.enabled,
+        hint: "They rotate in order each time a toast appears.",
+      },
+      {
+        group: "Content",
+        path: "toasts.replies",
+        label: "Quick replies",
+        type: "lines",
+        maxItems: 3,
+        when: (s) => s.toasts.enabled,
+        hint: "Up to 3 buttons. Tapping one opens the chat and sends it.",
+      },
+      {
+        group: "Timing",
+        path: "toasts.delay",
+        label: "First toast after",
+        type: "range",
+        min: 1,
+        max: 120,
+        unit: "s",
+        when: (s) => s.toasts.enabled,
+      },
+      {
+        group: "Timing",
+        path: "toasts.repeatEvery",
+        label: "Repeat every",
+        type: "range",
+        min: 0,
+        max: 600,
+        step: 5,
+        unit: "s",
+        when: (s) => s.toasts.enabled,
+        hint: "0 = show once.",
+      },
+      {
+        group: "Timing",
+        path: "toasts.maxShows",
+        label: "Max per visit",
+        type: "range",
+        min: 1,
+        max: 10,
+        when: (s) => s.toasts.enabled,
+      },
+      {
+        group: "Timing",
+        path: "toasts.duration",
+        label: "Stay on screen",
+        type: "range",
+        min: 0,
+        max: 60,
+        unit: "s",
+        when: (s) => s.toasts.enabled,
+        hint: "0 = until dismissed.",
+      },
+      {
+        group: "Look",
+        path: "toasts.style",
+        label: "Style",
+        type: "segment",
+        when: (s) => s.toasts.enabled,
+        options: [
+          { value: "card", label: "Card" },
+          { value: "bubble", label: "Speech bubble" },
+          { value: "pill", label: "Pill" },
+        ],
+      },
+      {
+        group: "Look",
+        path: "toasts.showAvatar",
+        label: "Show avatar",
+        type: "toggle",
+        when: (s) => s.toasts.enabled,
+      },
+      {
+        group: "Look",
+        path: "toasts.showName",
+        label: "Show assistant name",
+        type: "toggle",
+        when: (s) => s.toasts.enabled && s.toasts.style !== "pill",
+      },
+      {
+        group: "Sound",
+        path: "toasts.sound",
+        label: "Play a sound",
+        type: "toggle",
+        when: (s) => s.toasts.enabled,
+      },
+      {
+        group: "Sound",
+        path: "toasts.soundName",
+        label: "Toast sound",
+        type: "sound",
+        when: (s) => s.toasts.enabled && s.toasts.sound,
+      },
+      {
+        group: "Manners",
+        path: "toasts.dismissible",
+        label: "Dismiss button",
+        type: "toggle",
+        when: (s) => s.toasts.enabled,
+      },
+      {
+        group: "Manners",
+        path: "toasts.pauseOnHover",
+        label: "Pause timer on hover",
+        type: "toggle",
+        when: (s) => s.toasts.enabled && s.toasts.duration > 0,
+      },
+      {
+        group: "Manners",
+        path: "toasts.respectDismiss",
+        label: "Stay quiet after a dismiss",
+        type: "toggle",
+        when: (s) => s.toasts.enabled,
+        hint: "If a visitor closes one, no more appear this visit. Strongly recommended.",
+      },
+      {
+        group: "Manners",
+        path: "toasts.mobile",
+        label: "Show on phones",
+        type: "toggle",
+        when: (s) => s.toasts.enabled,
       },
     ],
   },
@@ -762,6 +1225,29 @@ export const SECTIONS: Section[] = [
     ],
   },
 ];
+
+/** Colour fields that get a dark-mode twin when theme.splitColors is on. */
+export const SPLIT_PATHS = [
+  "panel.bg", "panel.bg2", "panel.textColor", "panel.borderColor", "panel.headerBg", "panel.headerText",
+  "panel.composerBg", "panel.inputBg", "messages.userBg", "messages.userText", "messages.aiBg", "messages.aiText",
+];
+for (const sec of SECTIONS) {
+  const out: Field[] = [];
+  for (const f of sec.fields) {
+    out.push(f);
+    if (SPLIT_PATHS.includes(f.path)) {
+      const base = f.when;
+      out.push({
+        ...f,
+        path: f.path + "Dark",
+        label: f.label + " · dark mode",
+        hint: undefined,
+        when: (sc) => sc.theme.splitColors && (base ? base(sc) : true),
+      });
+    }
+  }
+  sec.fields = out;
+}
 
 export const PRESETS: {
   name: string;
